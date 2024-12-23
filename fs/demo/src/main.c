@@ -43,10 +43,14 @@ static void* demo_mount(struct fuse_conn_info * conn_info){
     printf("super.driver_fd: %d\n", super.driver_fd);
 
 
+    // /* 填充super信息 */
+    // super.sz_io = 512/* TODO */;
+    // super.sz_disk = 1048576/* TODO */;
+    // super.sz_blks = 1024/* TODO */; 
     /* 填充super信息 */
-    super.sz_io = /* TODO */;
-    super.sz_disk = /* TODO */;
-    super.sz_blks = /* TODO */; 
+    ddriver_ioctl(super.driver_fd, IOC_REQ_DEVICE_IO_SZ, &super.sz_io);    // 获取IO块大小
+    ddriver_ioctl(super.driver_fd, IOC_REQ_DEVICE_SIZE, &super.sz_disk); // 获取磁盘容量
+    super.sz_blks = 2 * super.sz_io; // 一个逻辑块是两个IO块
 
     return 0;
 }
@@ -65,14 +69,24 @@ static int demo_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off
     char filename[128]; // 待填充的
 
     /* 根据超级块的信息，从第500逻辑块读取一个dentry，ls将只固定显示这个文件名 */
+    char io_buffer[super.sz_io]; 
 
+    struct demo_dentry dentry; // 用于存放从磁盘块读取的目录项
     /* TODO: 计算磁盘偏移off，并根据磁盘偏移off调用ddriver_seek移动磁盘头到磁盘偏移off处 */
+    int block_number = 500;                            // 第500逻辑块
+    int disk_offset = block_number * super.sz_blks;    // 偏移量 = 逻辑块号 * 逻辑块大小
 
     /* TODO: 调用ddriver_read读出一个磁盘块到内存，512B */
+    ddriver_seek(super.driver_fd, disk_offset, SEEK_SET); // 移动磁盘头到目标偏移
+
+    ddriver_read(super.driver_fd, io_buffer, super.sz_io); // 从磁盘读取一个IO块大小的数据
 
     /* TODO: 使用memcpy拷贝上述512B的前sizeof(demo_dentry)字节构建一个demo_dentry结构 */
+    memcpy(&dentry, io_buffer, sizeof(struct demo_dentry)); // 从内存数据中拷贝目录项数据
 
     /* TODO: 填充filename */
+    strncpy(filename, dentry.fname, sizeof(dentry.fname));
+    filename[sizeof(dentry.fname) - 1] = '\0'; // 确保filename以NULL结尾
 
     // 此处大家先不关注filler，已经帮同学写好，同学填充好filename即可
     return filler(buf, filename, NULL, 0);
@@ -84,7 +98,7 @@ static int demo_getattr(const char* path, struct stat *stbuf)
     if(strcmp(path, "/") == 0)
         stbuf->st_mode = DEMO_DEFAULT_PERM | S_IFDIR;            // 根目录是目录文件
     else
-        stbuf->st_mode = /* TODO: 显示为普通文件 */;            // 该文件显示为普通文件
+        stbuf->st_mode = DEMO_DEFAULT_PERM | S_IFREG/* TODO: 显示为普通文件 */;            // 该文件显示为普通文件
     return 0;
 }
 
